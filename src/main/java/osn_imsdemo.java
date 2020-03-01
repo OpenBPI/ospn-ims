@@ -11,6 +11,7 @@ import java.net.URL;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.security.interfaces.ECPublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -156,6 +157,7 @@ public class osn_imsdemo implements HttpHandler{
         System.out.println(info);
     }
 
+    private JSONObject errok(){return error("0","");}
     private JSONObject error(String errCode, String errMsg){
         JSONObject json = new JSONObject();
         json.put("errCode", errCode);
@@ -184,7 +186,7 @@ public class osn_imsdemo implements HttpHandler{
         return error("1005", "can't find user");
     }
     private JSONObject errNoData(){return error("1006", "can't find data");}
-    private JSONObject errAuth(){return error("1007", "user auth failed");}
+    private JSONObject errAuth(String errMsg){return error("1007", errMsg == null ? "user auth failed" : errMsg);}
 
     private void respone(HttpExchange exchange, JSONObject json){
         try {
@@ -239,41 +241,59 @@ public class osn_imsdemo implements HttpHandler{
         }
         return json;
     }
-    private byte[] getPubKey(String user){
-        byte[] key = null;
-        logInfo("[getPubKey] user: " + user);
-        try {
-            user = user.substring(3);
-            byte[] data = Base58.decode(user);
-            key = new byte[mKeyLength];
-            System.arraycopy(data, 3, key, 0, mKeyLength);
-        }
-        catch (Exception e){
-            e.printStackTrace();
-        }
-        return key;
-    }
-    private boolean checkAuth(MsgData msgData, MsgAuth msgAuth){
+//    private byte[] getPubKey(String user){
+//        byte[] key = null;
+//        logInfo("[getPubKey] user: " + user);
+//        try {
+//            user = user.substring(3);
+//            byte[] data = Base58.decode(user);
+//            key = new byte[mKeyLength];
+//            System.arraycopy(data, 3, key, 0, mKeyLength);
+//        }
+//        catch (Exception e){
+//            e.printStackTrace();
+//        }
+//        return key;
+//    }
+//    private boolean checkAuth(MsgData msgData, MsgAuth msgAuth){
+//        boolean auth = false;
+//        try {
+//            //logInfo("to: " + msgData.to);
+//            byte[] key = getPubKey(msgData.to);
+//            if (key != null){
+//                X509EncodedKeySpec keySpec = new X509EncodedKeySpec(key);
+//                KeyFactory keyFactory = KeyFactory.getInstance("EC");
+//                PublicKey publicKey = keyFactory.generatePublic(keySpec);
+//                Signature signature = Signature.getInstance("SHA1withECDSA");
+//                signature.initVerify(publicKey);
+//                byte[] hash = Base64.getDecoder().decode(msgData.hash);
+//                byte[] sign = Base64.getDecoder().decode(msgAuth.sign);
+//                signature.update(hash);
+//                auth = signature.verify(sign);
+//            }
+//        }
+//        catch (Exception e){
+//            e.printStackTrace();
+//        }
+//        logInfo("[checkAuth -> " + auth + "] hash: " + msgAuth.hash + ", sign: " + msgAuth.sign);
+//        return auth;
+//    }
+    private boolean checkAuth(MsgData msgData, MsgAuth msgAuth, JSONObject json){
         boolean auth = false;
+        String errMsg = "";
         try {
             //logInfo("to: " + msgData.to);
-            byte[] key = getPubKey(msgData.to);
-            if (key != null){
-                X509EncodedKeySpec keySpec = new X509EncodedKeySpec(key);
-                KeyFactory keyFactory = KeyFactory.getInstance("EC");
-                PublicKey publicKey = keyFactory.generatePublic(keySpec);
-                Signature signature = Signature.getInstance("SHA1withECDSA");
-                signature.initVerify(publicKey);
-                byte[] hash = Base64.getDecoder().decode(msgData.hash);
-                byte[] sign = Base64.getDecoder().decode(msgAuth.sign);
-                signature.update(hash);
-                auth = signature.verify(sign);
-            }
+            ECPublicKey pkey = ECUtils.getPulicKeyFromAddress(msgData.to);
+            byte[] hash = Base64.getDecoder().decode(msgData.hash);
+            byte[] sign = Base64.getDecoder().decode(msgAuth.sign);
+            auth = ECUtils.verifySignFromHexStringKey(hash, pkey.getEncoded(), sign);
         }
         catch (Exception e){
             e.printStackTrace();
+            errMsg = e.getMessage();
         }
         logInfo("[checkAuth -> " + auth + "] hash: " + msgAuth.hash + ", sign: " + msgAuth.sign);
+        json = auth ? errok() : errAuth(errMsg);
         return auth;
     }
     private void MsgComplete(HttpExchange exchange, JSONObject json){
@@ -296,14 +316,9 @@ public class osn_imsdemo implements HttpHandler{
                 return;
             }
             if(msgData.ip == null){
-//                if(checkAuth(msgData, msgAuth)){
+                json.clear();
+                if(checkAuth(msgData, msgAuth, json))
                     msgData.obj.remove(msgData);
-                    json.clear();
-                    json.put("errCode", "0");
-//                }
-//                else{
-//                    json = errAuth();
-//                }
             }
             else{
                 msgData.obj.remove(msgData);
