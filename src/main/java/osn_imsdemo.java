@@ -334,18 +334,24 @@ public class osn_imsdemo implements HttpHandler{
     }
     private void GetMessage(HttpExchange exchange, JSONObject json){
         try {
-            String user = json.getString("to");
+            String userHash = null;
+            String user = json.getString("user");
             if(user == null){
-                respone(exchange, errUser());
-                return;
+                userHash = json.getString("to");
+                if(userHash == null){
+                    respone(exchange, errUser());
+                    return;
+                }
+                user = "<remote>";
             }
-            String userHash = IDUtil.GetHash(user);
-            logInfo("[GetMessage] user: "+ user +", userHash: "+userHash);
+            else
+                userHash = IDUtil.GetHash(user);
+            //logInfo("[GetMessage] user: "+ user +", userHash: "+userHash);
 
             json.clear();
             json.put("errCode", "0");
             getUsermsg(userHash, json);
-            logInfo("[message] " + json.toString());
+            //logInfo("[message] " + json.toString());
         }
         catch (Exception e){
             e.printStackTrace();
@@ -420,7 +426,7 @@ public class osn_imsdemo implements HttpHandler{
         userData.userID = userID;
         userData.userHash = IDUtil.GetHash(userID);
         mUserMap.put(userData.userHash, userData);
-        logInfo("[Login] user: " + userID + ", userHash: " + userData.userHash);
+        //logInfo("[Login] user: " + userID + ", userHash: " + userData.userHash);
         json.clear();
         json.put("errCode", "0");
         json.put("userHash", userData.userHash);
