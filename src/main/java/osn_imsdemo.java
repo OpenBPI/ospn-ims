@@ -351,7 +351,7 @@ public class osn_imsdemo implements HttpHandler{
             json.clear();
             json.put("errCode", "0");
             getUsermsg(userHash, json);
-            //logInfo("[message] " + json.toString());
+            logInfo("[message] " + json.toString());
         }
         catch (Exception e){
             e.printStackTrace();
@@ -410,9 +410,11 @@ public class osn_imsdemo implements HttpHandler{
 
             json.clear();
             json.put("command", "getmsg");
-            json.put("to", userData.userID);
+            json.put("to", userData.userHash);
+            json.put("user", userData.userID);
             json.put("from", "");
             json.put("ip", ip);
+            logInfo("[Finder: ]" + json.toString());
             json = doPost(mOSNConnector, json);
             setHashmsg(hash, json, ip);
 
