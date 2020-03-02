@@ -7,20 +7,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="3ee54c94-5c19-4be9-9d9f-a9ab4e850479" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/osn-imsdemo.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/artifacts/osn_imsdemo_jar.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/artifacts/osn_imsdemo_jar.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/out/artifacts/osn_ims_jar/osn_ims.jar" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/META-INF/MANIFEST.MF" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/META-INF/MANIFEST.MF" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/osn_imsdemo.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/osn_imsdemo.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/resources/META-INF/MANIFEST.MF" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/META-INF/MANIFEST.MF" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/target/classes/META-INF/MANIFEST.MF" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/META-INF/MANIFEST.MF" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/target/classes/IDUtil.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/IDUtil.class" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/classes/osn_imsdemo$MsgAuth.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/osn_imsdemo$MsgAuth.class" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/classes/osn_imsdemo$MsgData.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/osn_imsdemo$MsgData.class" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/classes/osn_imsdemo$UserData.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/osn_imsdemo$UserData.class" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/classes/osn_imsdemo.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/osn_imsdemo.class" afterDir="false" />
     </list>
+    <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -53,10 +51,22 @@
     <property name="project.structure.side.proportion" value="0.2" />
     <property name="settings.editor.selected.configurable" value="reference.projectsettings.compiler.javacompiler" />
   </component>
+  <component name="RunDashboard">
+    <option name="ruleStates">
+      <list>
+        <RuleState>
+          <option name="name" value="ConfigurationTypeDashboardGroupingRule" />
+        </RuleState>
+        <RuleState>
+          <option name="name" value="StatusDashboardGroupingRule" />
+        </RuleState>
+      </list>
+    </option>
+  </component>
   <component name="RunManager">
     <configuration name="osn-imsdemo" type="Application" factoryName="Application">
       <option name="MAIN_CLASS_NAME" value="osn_imsdemo" />
-      <module name="osn-imsdemo" />
+      <module name="osn_imsdemo" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
@@ -82,6 +92,19 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="COLUMN_ORDER" />
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="WindowStateProjectService">
     <state x="320" y="90" key="#Project_Structure" timestamp="1583065513528">
