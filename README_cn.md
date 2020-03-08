@@ -13,5 +13,6 @@ TODO
 ## 文档
 * OSN-IMSDemo与OSN-connector之间进行通信，请参见[OSN-connector](https://github.com/OpenBPI/osn-connector)接口文档  
 * OSN-IMSDemo与客户端的通信文档见[interface.md](./interface.md)
-
+## 更新
+2020-03-08 增加了对来自客户端回执的验签功能。  
 
