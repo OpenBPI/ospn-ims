@@ -1,3 +1,4 @@
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.sun.net.httpserver.HttpExchange;
@@ -21,6 +22,10 @@ public class osn_imsdemo implements HttpHandler{
         String osnConnector = "127.0.0.1";
         if(args.length > 1)
             osnConnector = args[1];
+
+        LogFile.initLog("imsdemo.log");
+        SqliteUtil.initSqlite();
+
         osnConnector = "http://"+osnConnector+":8400/osnc";
         osn_imsdemo ims = new osn_imsdemo(osnConnector);
         ims.StartServer();
@@ -28,12 +33,21 @@ public class osn_imsdemo implements HttpHandler{
     private String mOSNConnector;
     private Map<String, UserData> mUserMap = new HashMap<>();              //userHash to UserData
     private Map<String, LinkedList<MsgData>> mHashMsg = new HashMap<>();   //userHash to MsgData List
-    private Map<String,MsgData> mHashAuth = new HashMap<>();               //msgHash to MsgData
-    private int mKeyLength = 91;
+    private Map<String, MsgData> mHashAuth = new HashMap<>();              //msgHash to MsgData
+    //private Map<String, GroupData> mGroupMap = new HashMap<>();            //groupHash to GroupData
+    private String mServiceOsnID = null;
+    private String mServiceKey = null;
 
     static class UserData{
         String userID;
         String userHash;
+    }
+    static class GroupData{
+        String groupID;
+        String ownID;
+        String privateKey;
+        String shadowKey;
+        String[] userList;
     }
     static class MsgData{
         String command;
@@ -60,15 +74,24 @@ public class osn_imsdemo implements HttpHandler{
     }
     private void StartServer(){
         try {
+            String[] serviceOsnID = SqliteUtil.getServiceID();
+            if(serviceOsnID == null) {
+                serviceOsnID = ECUtils.createServiceOsnID();
+                SqliteUtil.setServiceID(serviceOsnID);
+            }
+            mServiceOsnID = serviceOsnID[0];
+            mServiceKey = serviceOsnID[1];
+
             HttpServer httpServer = HttpServer.create(new InetSocketAddress(8100), 0);
             httpServer.createContext("/ims", this);
             httpServer.start();
-            logInfo("StartIMSServer port: 8100");
+            LogFile.logInfo("StartIMSServer port: 8100");
         }
         catch (Exception e){
             e.printStackTrace();
         }
     }
+
     private JSONObject getBody(InputStream inputStream){
         JSONObject json = null;
         try {
@@ -110,7 +133,7 @@ public class osn_imsdemo implements HttpHandler{
     }
     private void json2Msg(LinkedList<MsgData> linkedList, JSONObject jsonObject, String ip){
         if(!jsonObject.containsKey("data")) {
-            logInfo("json2Msg no contains data");
+            LogFile.logInfo("json2Msg no contains data");
             return;
         }
         JSONArray jsonArray = jsonObject.getJSONArray("data");
@@ -149,44 +172,27 @@ public class osn_imsdemo implements HttpHandler{
             array.add(msgData.from);
         jsonObject.put("data", array);
     }
-    private void logInfo(String info){
-        SimpleDateFormat formatter= new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss] ");
-        Date date = new Date(System.currentTimeMillis());
-        String time = formatter.format(date);
-        System.out.print(time);
-        System.out.println(info);
-    }
 
-    private JSONObject errok(){return error("0","");}
-    private JSONObject error(String errCode, String errMsg){
+    private JSONObject errok(){return error("success");}
+    private JSONObject error(String errCode){
         JSONObject json = new JSONObject();
         json.put("errCode", errCode);
-        json.put("errMsg", errMsg);
         return json;
     }
-    private JSONObject errExcept(String msg){
-        return error("-1", msg);
+    private JSONObject errExcept(String msg){return error(msg);}
+    private JSONObject errCommand(){
+        return error("unknow command");
     }
-    private JSONObject errNeedPost(){
-        return error("1001", "only support POST");
-    }
-    private JSONObject errNeedBody(){
-        return error("1002", "need body");
-    }
-    private JSONObject errUnknowCommand(){
-        return error("1003", "no support command");
-    }
-    private JSONObject errResponseCode(int errCode){
-        return error(String.valueOf(errCode), "Response error");
+    private JSONObject errResponse(int errCode){
+        return error("Response error" + String.valueOf(errCode));
     }
     private JSONObject errFormat(){
-        return error("1004", "error format");
+        return error("error format");
     }
-    private JSONObject errUser(){
-        return error("1005", "can't find user");
-    }
-    private JSONObject errNoData(){return error("1006", "can't find data");}
-    private JSONObject errAuth(String errMsg){return error("1007", errMsg == null ? "user auth failed" : errMsg);}
+    private JSONObject errNoUser(){return error("error user");}
+    private JSONObject errNoData(){return error("error data");}
+    private JSONObject errVerify(){return error("sign verify failed");}
+    private JSONObject errUpdatetDB(){return error("update db error");}
 
     private void respone(HttpExchange exchange, JSONObject json){
         try {
@@ -228,7 +234,7 @@ public class osn_imsdemo implements HttpHandler{
             else
                 httpURLConnection.connect();
             if (httpURLConnection.getResponseCode() != 200){
-                json = errResponseCode(httpURLConnection.getResponseCode());
+                json = errResponse(httpURLConnection.getResponseCode());
             }
             else {
                 InputStream inputStream = httpURLConnection.getInputStream();
@@ -241,84 +247,45 @@ public class osn_imsdemo implements HttpHandler{
         }
         return json;
     }
-//    private byte[] getPubKey(String user){
-//        byte[] key = null;
-//        logInfo("[getPubKey] user: " + user);
-//        try {
-//            user = user.substring(3);
-//            byte[] data = Base58.decode(user);
-//            key = new byte[mKeyLength];
-//            System.arraycopy(data, 3, key, 0, mKeyLength);
-//        }
-//        catch (Exception e){
-//            e.printStackTrace();
-//        }
-//        return key;
-//    }
-//    private boolean checkAuth(MsgData msgData, MsgAuth msgAuth){
-//        boolean auth = false;
-//        try {
-//            //logInfo("to: " + msgData.to);
-//            byte[] key = getPubKey(msgData.to);
-//            if (key != null){
-//                X509EncodedKeySpec keySpec = new X509EncodedKeySpec(key);
-//                KeyFactory keyFactory = KeyFactory.getInstance("EC");
-//                PublicKey publicKey = keyFactory.generatePublic(keySpec);
-//                Signature signature = Signature.getInstance("SHA1withECDSA");
-//                signature.initVerify(publicKey);
-//                byte[] hash = Base64.getDecoder().decode(msgData.hash);
-//                byte[] sign = Base64.getDecoder().decode(msgAuth.sign);
-//                signature.update(hash);
-//                auth = signature.verify(sign);
-//            }
-//        }
-//        catch (Exception e){
-//            e.printStackTrace();
-//        }
-//        logInfo("[checkAuth -> " + auth + "] hash: " + msgAuth.hash + ", sign: " + msgAuth.sign);
-//        return auth;
-//    }
-    private boolean checkAuth(MsgData msgData, MsgAuth msgAuth, JSONObject json){
+    private boolean verifySign(MsgData msgData, MsgAuth msgAuth){
         boolean auth = false;
-        String errMsg = "";
         try {
-            //logInfo("to: " + msgData.to);
-            ECPublicKey pkey = ECUtils.getPulicKeyFromAddress(msgData.to);
-            byte[] hash = Base64.getDecoder().decode(msgData.hash);
-            byte[] sign = Base64.getDecoder().decode(msgAuth.sign);
-            auth = ECUtils.verifySignFromHexStringKey(hash, pkey.getEncoded(), sign);
+            auth = ECUtils.verifySign(msgData.to, msgData.hash, msgAuth.sign);
         }
         catch (Exception e){
-            e.printStackTrace();
-            errMsg = e.getMessage();
+            LogFile.logInfo("verify sign:" + e.getMessage());
         }
-        logInfo("[checkAuth -> " + auth + "] hash: " + msgAuth.hash + ", sign: " + msgAuth.sign);
-        json = auth ? errok() : errAuth(errMsg);
+        LogFile.logInfo("verifySign:" + auth + ", hash: " + msgAuth.hash + ", sign: " + msgAuth.sign);
         return auth;
     }
     private void MsgComplete(HttpExchange exchange, JSONObject json){
         try {
             MsgAuth msgAuth = json2Auth(json);
             if(msgAuth.from == null){
+                LogFile.logInfo("MsgComplete: format error -> "+exchange.getRemoteAddress().toString());
                 respone(exchange, errFormat());
                 return;
             }
-            logInfo("[MsgComplete] from: " + msgAuth.from + ", to: " + msgAuth.to);
+            LogFile.logInfo("MsgComplete from: " + msgAuth.from + ", to: " + msgAuth.to);
             String toHash = IDUtil.GetHash(msgAuth.to);
             LinkedList<MsgData> linkedList = mHashMsg.get(toHash);
             if(linkedList == null){
+                LogFile.logInfo("MsgComplete: no find data");
                 respone(exchange, errNoData());
                 return;
             }
             MsgData msgData = mHashAuth.get(msgAuth.hash);
             if(msgData == null){
+                LogFile.logInfo("MsgComplete: no find data");
                 respone(exchange, errNoData());
                 return;
             }
             if(msgData.ip == null){
                 json.clear();
-                if(checkAuth(msgData, msgAuth, json))
+                if(verifySign(msgData, msgAuth))
                     msgData.obj.remove(msgData);
+                else
+                    json = errVerify();
             }
             else{
                 msgData.obj.remove(msgData);
@@ -327,7 +294,7 @@ public class osn_imsdemo implements HttpHandler{
             }
         }
         catch (Exception e){
-            e.printStackTrace();
+            LogFile.logInfo("MsgComplete:"+e.getMessage());
             json = errExcept(e.getMessage());
         }
         respone(exchange, json);
@@ -339,7 +306,8 @@ public class osn_imsdemo implements HttpHandler{
             if(user == null){
                 userHash = json.getString("to");
                 if(userHash == null){
-                    respone(exchange, errUser());
+                    LogFile.logInfo("GetMessage: unknow user");
+                    respone(exchange, errNoUser());
                     return;
                 }
                 user = "<remote>";
@@ -351,17 +319,17 @@ public class osn_imsdemo implements HttpHandler{
             json.clear();
             json.put("errCode", "0");
             getUsermsg(userHash, json);
-            logInfo("[message] " + json.toString());
+            //logInfo("[message] " + json.toString());
         }
         catch (Exception e){
-            e.printStackTrace();
+            LogFile.logInfo("GetMessage:"+e.getMessage());
             json = errExcept(e.getMessage());
         }
         respone(exchange, json);
     }
     private void GetMsgList(HttpExchange exchange, JSONObject json){
         String hash = json.getString("hash");
-        logInfo("[GetMsgList <-] hash: " + hash);
+        LogFile.logInfo("GetMsgList <- hash: " + hash);
         json.clear();
         json.put("command", "userlist");
         getUserlist(hash, json);
@@ -370,6 +338,7 @@ public class osn_imsdemo implements HttpHandler{
     private void SendMessage(HttpExchange exchange, JSONObject json){
         try {
             if(!json.containsKey("from") || !json.containsKey("to")){
+                LogFile.logInfo("SendMessage: format error -> " + exchange.getRemoteAddress().toString());
                 respone(exchange, errFormat());
                 return;
             }
@@ -378,24 +347,21 @@ public class osn_imsdemo implements HttpHandler{
             LinkedList<MsgData> linkedList = mHashMsg.computeIfAbsent(toHash, k -> new LinkedList<>());
             linkedList.add(msgData);
             msgData.obj = linkedList;
-            logInfo("[SendMessage] from: "+ msgData.from +", to: "+ msgData.to);
+            LogFile.logInfo("SendMessage from: "+ msgData.from +", to: "+ msgData.to);
             json = doPost(mOSNConnector, json);
-            respone(exchange, json);
         }
         catch (Exception e){
-            e.printStackTrace();
-            errExcept(e.getMessage());
+            LogFile.logInfo("SendMessage:"+e.getMessage());
+            json = errExcept(e.getMessage());
         }
+        respone(exchange, json);
     }
     private void FindUser(HttpExchange exchange, JSONObject json){
         String hash = json.getString("hash");
         String ip = json.getString("ip");
 
-        logInfo("[FindUser] ip: " + ip + ", hash: " + hash);
-
-        json.clear();
-        json.put("errCode", "0");
-        respone(exchange, json);
+        LogFile.logInfo("FindUser ip: " + ip + ", hash: " + hash);
+        respone(exchange, errok());
 
         if(mUserMap.containsKey(hash)) {
             json.clear();
@@ -404,7 +370,7 @@ public class osn_imsdemo implements HttpHandler{
             json.put("ip", ip);
             json = doPost(mOSNConnector, json);
 
-            logInfo("[FindUser:getmsglist ->] ip: " + ip + ", has:" + hash);
+            LogFile.logInfo("FindUser: getmsglist -> ip: " + ip + ", has:" + hash);
 
             UserData userData = mUserMap.get(hash);
 
@@ -414,12 +380,12 @@ public class osn_imsdemo implements HttpHandler{
             json.put("user", userData.userID);
             json.put("from", "");
             json.put("ip", ip);
-            logInfo("[Finder: ]" + json.toString());
+            LogFile.logInfo("Finder: " + json.toString());
             json = doPost(mOSNConnector, json);
             setHashmsg(hash, json, ip);
 
-            logInfo("[FindUser:getmsg ->] user: " + userData.userID);
-            logInfo("[message] " + json);
+            LogFile.logInfo("FindUser: getmsg -> user: " + userData.userID);
+            //logInfo("[message] " + json);
         }
     }
     private void Login(HttpExchange exchange, JSONObject json){
@@ -432,7 +398,29 @@ public class osn_imsdemo implements HttpHandler{
         json.clear();
         json.put("errCode", "0");
         json.put("userHash", userData.userHash);
+        json.put("serviceID", mServiceOsnID);
         respone(exchange, json);
+    }
+    private void CreateGroup(HttpExchange exchange, JSONObject json){
+        String data = json.getString("data");
+        String owner = json.getString("owner");
+        String sign = json.getString("sign");
+        if(!ECUtils.verifySign(owner, data, sign)){
+            LogFile.logInfo("CreateGroup: verify sign failed, owner="+owner);
+            respone(exchange, errVerify());
+            return;
+        }
+
+        byte[] decData = ECUtils.ECDecrypt(mServiceKey, data);
+        String groupInfo = new String(decData);
+        json = JSONObject.parseObject(groupInfo);
+        json.put("owner", owner);
+        json.put("userList", "");
+        LogFile.logInfo("CreateGroup: groupID="+json.getString("groupID")+", owner="+owner);
+        if(SqliteUtil.insertGroup(json))
+            respone(exchange, errok());
+        else
+            respone(exchange, errUpdatetDB());
     }
     public void handle(HttpExchange exchange) {
         String requestMethod = exchange.getRequestMethod();
@@ -456,8 +444,10 @@ public class osn_imsdemo implements HttpHandler{
                 MsgComplete(exchange, json);
             } else if ("finduser".equalsIgnoreCase(command)) {
                 FindUser(exchange, json);
+            } else if("creategroup".equalsIgnoreCase(command)){
+                CreateGroup(exchange, json);
             } else {
-                respone(exchange, errUnknowCommand());
+                respone(exchange, errCommand());
             }
         }
     }

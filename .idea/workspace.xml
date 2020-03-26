@@ -7,10 +7,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="3ee54c94-5c19-4be9-9d9f-a9ab4e850479" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.name" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/artifacts/osn_imsdemo_jar.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/artifacts/osn_imsdemo_jar.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/compiler.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/compiler.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/out/artifacts/osn_ims_jar/osn_ims.jar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/ECUtils.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/ECUtils.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/osn_imsdemo.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/osn_imsdemo.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/classes/IDUtil.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/IDUtil.class" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/target/classes/osn_imsdemo$MsgAuth.class" beforeDir="false" afterPath="$PROJECT_DIR$/target/classes/osn_imsdemo$MsgAuth.class" afterDir="false" />
@@ -24,13 +27,27 @@
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Class" />
+      </list>
+    </option>
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="MavenImportPreferences">
+    <option name="generalSettings">
+      <MavenGeneralSettings>
+        <option name="localRepository" value="C:\Users\LiAuH\.m2\repository" />
+        <option name="userSettingsFile" value="C:\Users\LiAuH\.m2\settings.xml" />
+      </MavenGeneralSettings>
+    </option>
     <option name="importingSettings">
       <MavenImportingSettings>
         <option name="importAutomatically" value="true" />
+        <option name="vmOptionsForImporter" value="-Xmx768m" />
       </MavenImportingSettings>
     </option>
   </component>
@@ -41,14 +58,19 @@
     <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent">
+    <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
+    <property name="Downloaded.Files.Path.Enabled" value="false" />
+    <property name="Repository.Attach.Annotations" value="false" />
+    <property name="Repository.Attach.JavaDocs" value="false" />
+    <property name="Repository.Attach.Sources" value="false" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="project.structure.last.edited" value="Artifacts" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/lib/ToRuntime-0.9.0.jar!/" />
+    <property name="project.structure.last.edited" value="Modules" />
     <property name="project.structure.proportion" value="0.15" />
-    <property name="project.structure.side.proportion" value="0.2" />
+    <property name="project.structure.side.proportion" value="0.32413793" />
     <property name="settings.editor.selected.configurable" value="reference.projectsettings.compiler.javacompiler" />
   </component>
   <component name="RunDashboard">
@@ -66,7 +88,7 @@
   <component name="RunManager">
     <configuration name="osn-imsdemo" type="Application" factoryName="Application">
       <option name="MAIN_CLASS_NAME" value="osn_imsdemo" />
-      <module name="osn_imsdemo" />
+      <module name="osn-imsdemo" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>

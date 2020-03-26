@@ -2,7 +2,7 @@
   <artifact type="jar" name="osn-imsdemo:jar">
     <output-path>$PROJECT_DIR$/out/artifacts/osn_imsdemo_jar</output-path>
     <root id="archive" name="osn-imsdemo.jar">
-      <element id="module-output" name="osn_imsdemo" />
+      <element id="module-output" name="osn-imsdemo" />
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/alibaba/fastjson/1.2.32/fastjson-1.2.32.jar" path-in-jar="/" />
     </root>
   </artifact>

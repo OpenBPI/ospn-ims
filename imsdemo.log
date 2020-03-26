@@ -1,0 +1,5 @@
+[2020-03-26 23:05:23] createServiceOsnIDTable:[SQLITE_ERROR] SQL error or missing database (table serviceOsnID already exists)
+[2020-03-26 23:05:23] createGroupOsnIDTable:[SQLITE_ERROR] SQL error or missing database (table groupOsnID already exists)
+[2020-03-26 23:05:23] StartIMSServer port: 8100
+[2020-03-26 23:09:03] ECIESDecrypt: Illegal key size or default parameters
+[2020-03-26 23:09:03] ECDecrypt: null
