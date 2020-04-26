@@ -1,176 +1,66 @@
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
+import org.bouncycastle.jcajce.provider.asymmetric.ec.KeyFactorySpi;
 
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.InetSocketAddress;
-import java.net.URL;
-import java.security.KeyFactory;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.interfaces.ECPublicKey;
-import java.security.spec.X509EncodedKeySpec;
-import java.text.SimpleDateFormat;
+import java.net.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-public class osn_imsdemo implements HttpHandler{
+public class osn_imsdemo {
     public static void main(String[] args) {
-        String osnConnector = "127.0.0.1";
+        osn_imsdemo ims = new osn_imsdemo();
+        ims.mOsnConnector = "127.0.0.1";
+        ims.mLogFileName = "imsdemo.log";
         if(args.length > 1)
-            osnConnector = args[1];
-
-        LogFile.initLog("imsdemo.log");
-        SqliteUtil.initSqlite();
-
-        osnConnector = "http://"+osnConnector+":8400/osnc";
-        osn_imsdemo ims = new osn_imsdemo(osnConnector);
+            ims.mOsnConnector = args[0];
         ims.StartServer();
+
+        if(args.length > 1 && args[args.length-1].equalsIgnoreCase("test")){
+            try {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+                while (true) {
+                    System.out.print(">");
+                    String line = reader.readLine();
+                    System.out.print(line);
+                    if (line.equalsIgnoreCase("osnid")) {
+                        String[] osnid = ECUtils.createOsnID("");
+                        System.out.println("OsnID: " + osnid[0]);
+                    } else if (line.equalsIgnoreCase("exit")) {
+                        break;
+                    }
+                }
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+        }
     }
-    private String mOSNConnector;
-    private Map<String, UserData> mUserMap = new HashMap<>();              //userHash to UserData
-    private Map<String, LinkedList<MsgData>> mHashMsg = new HashMap<>();   //userHash to MsgData List
-    private Map<String, MsgData> mHashAuth = new HashMap<>();              //msgHash to MsgData
-    //private Map<String, GroupData> mGroupMap = new HashMap<>();            //groupHash to GroupData
+
+    private Map<String, UserData> mUserMap = new HashMap<>();           //userHash to UserData
+    private Map<String, List<JSONObject>> mHashMsg = new HashMap<>();   //userHash to MsgData List
     private String mServiceOsnID = null;
     private String mServiceKey = null;
+    private ExecutorService mExecutorService  = Executors.newFixedThreadPool(2);
+    private Object mLock = new Object();
+
+    private int mIMServerPort = 8100;
+    private int mOsnPort = 8400;
+    private String mOsnConnector = null;
+    private String mLogFileName = null;
 
     static class UserData{
         String userID;
         String userHash;
-    }
-    static class GroupData{
-        String groupID;
-        String ownID;
-        String privateKey;
-        String shadowKey;
-        String[] userList;
-    }
-    static class MsgData{
-        String command;
-        String from;
-        String to;
-        String timestamp;
-        String crypto;
-        String content;
-        String description;
-        String hash;
-        String sign;
-        String ip;
-        LinkedList<MsgData> obj;
-    }
-    static class MsgAuth{
-        String command;
-        String from;
-        String to;
-        String hash;
-        String sign;
-    }
-    private osn_imsdemo(String osnConnector){
-        this.mOSNConnector = osnConnector;
-    }
-    private void StartServer(){
-        try {
-            String[] serviceOsnID = SqliteUtil.getServiceID();
-            if(serviceOsnID == null) {
-                serviceOsnID = ECUtils.createServiceOsnID();
-                SqliteUtil.setServiceID(serviceOsnID);
-            }
-            mServiceOsnID = serviceOsnID[0];
-            mServiceKey = serviceOsnID[1];
-
-            HttpServer httpServer = HttpServer.create(new InetSocketAddress(8100), 0);
-            httpServer.createContext("/ims", this);
-            httpServer.start();
-            LogFile.logInfo("StartIMSServer port: 8100");
-        }
-        catch (Exception e){
-            e.printStackTrace();
-        }
-    }
-
-    private JSONObject getBody(InputStream inputStream){
-        JSONObject json = null;
-        try {
-            StringBuilder sb = new StringBuilder();
-            byte[] bb = new byte[1024];
-            int length;
-            while ((length = inputStream.read(bb)) != -1) {
-                sb.append(new String(bb, 0, length));
-            }
-            json = JSONObject.parseObject(sb.toString());
-        }
-        catch (Exception e){
-            json = errExcept(e.getMessage());
-        }
-        return json;
-    }
-    private MsgAuth json2Auth(JSONObject jsonObject){
-        MsgAuth msgAuth = new MsgAuth();
-        msgAuth.command = jsonObject.getString("command");
-        msgAuth.from = jsonObject.getString("from");
-        msgAuth.to = jsonObject.getString("to");
-        msgAuth.hash = jsonObject.getString("hash");
-        msgAuth.sign = jsonObject.getString("sign");
-        return msgAuth;
-    }
-    private MsgData json2Msg(JSONObject jsonObject){
-        MsgData msgData = new MsgData();
-        msgData.command = jsonObject.getString("command");
-        msgData.from = jsonObject.getString("from");
-        msgData.to = jsonObject.getString("to");
-        msgData.crypto = jsonObject.getString("crypto");
-        msgData.content = jsonObject.getString("content");
-        msgData.description = jsonObject.getString("description");
-        msgData.hash = jsonObject.getString("hash");
-        msgData.timestamp = jsonObject.getString("timestamp");
-        msgData.sign = jsonObject.getString("sign");
-        mHashAuth.put(msgData.hash, msgData);
-        return msgData;
-    }
-    private void json2Msg(LinkedList<MsgData> linkedList, JSONObject jsonObject, String ip){
-        if(!jsonObject.containsKey("data")) {
-            LogFile.logInfo("json2Msg no contains data");
-            return;
-        }
-        JSONArray jsonArray = jsonObject.getJSONArray("data");
-        for(int i = 0; i < jsonArray.size(); ++i){
-            JSONObject json = jsonArray.getJSONObject(i);
-            MsgData msgData = json2Msg(json);
-            msgData.ip = ip;
-            msgData.obj = linkedList;
-            linkedList.add(msgData);
-        }
-    }
-    private JSONObject msg2Json(MsgData msgData){
-        JSONObject jsonObject = new JSONObject();
-        jsonObject.put("command", msgData.command);
-        jsonObject.put("from", msgData.from);
-        jsonObject.put("to", msgData.to);
-        jsonObject.put("crypto", msgData.crypto);
-        jsonObject.put("content", msgData.content);
-        jsonObject.put("description", msgData.description);
-        jsonObject.put("hash", msgData.hash);
-        jsonObject.put("timestamp", msgData.timestamp);
-        jsonObject.put("sign", msgData.sign);
-        return jsonObject;
-    }
-    private void msg2Json(LinkedList<MsgData> linkedList, JSONObject jsonObject){
-        JSONArray array = new JSONArray();
-        for (MsgData msgData : linkedList) {
-            JSONObject json = msg2Json(msgData);
-            array.add(json);
-        }
-        jsonObject.put("data", array);
-    }
-    private void msg2List(LinkedList<MsgData> linkedList, JSONObject jsonObject) {
-        JSONArray array = new JSONArray();
-        for (MsgData msgData : linkedList)
-            array.add(msgData.from);
-        jsonObject.put("data", array);
+        SocketChannel socketChannel;
+        SelectionKey key;
+        long timelive;
     }
 
     private JSONObject errok(){return error("success");}
@@ -179,276 +69,669 @@ public class osn_imsdemo implements HttpHandler{
         json.put("errCode", errCode);
         return json;
     }
-    private JSONObject errExcept(String msg){return error(msg);}
-    private JSONObject errCommand(){
-        return error("unknow command");
-    }
-    private JSONObject errResponse(int errCode){
-        return error("Response error" + String.valueOf(errCode));
-    }
-    private JSONObject errFormat(){
-        return error("error format");
-    }
-    private JSONObject errNoUser(){return error("error user");}
-    private JSONObject errNoData(){return error("error data");}
+    private JSONObject errFormat(){return error("error format");}
     private JSONObject errVerify(){return error("sign verify failed");}
-    private JSONObject errUpdatetDB(){return error("update db error");}
+    private JSONObject errUpdateDB(){return error("update db error");}
+    private JSONObject errRight(){return error("no right");}
+    private JSONObject errUser(){return error("no find user");}
 
-    private void respone(HttpExchange exchange, JSONObject json){
-        try {
-            exchange.sendResponseHeaders(200, 0);
-            OutputStream outputStream = exchange.getResponseBody();
-            outputStream.write(json.toString().getBytes());
-            outputStream.close();
+    private Boolean isMember(GroupData group, String user){
+        for(int i = 0; i < group.userList.size(); ++i){
+            JSONObject json = group.userList.getJSONObject(i);
+            if(json.getString("user").equalsIgnoreCase(user))
+                return true;
         }
-        catch (Exception e){
-            e.printStackTrace();
-        }
+        return false;
     }
-    private void setHashmsg(String hash, JSONObject json, String ip){
-        LinkedList<MsgData> linkedList = mHashMsg.computeIfAbsent(hash, k -> new LinkedList<>());
-        json2Msg(linkedList, json, ip);
-    }
-    private void getUsermsg(String hash, JSONObject json){
-        LinkedList<MsgData> linkedList = mHashMsg.computeIfAbsent(hash, k -> new LinkedList<>());
-        msg2Json(linkedList, json);
-        linkedList.clear();
-    }
-    private void getUserlist(String hash, JSONObject json){
-        LinkedList<MsgData> linkedList = mHashMsg.computeIfAbsent(hash, k -> new LinkedList<>());
-        msg2List(linkedList, json);
-    }
-
-    private JSONObject doPost(String urlString, JSONObject json){
-        try{
-            URL url = new URL(urlString);
-            HttpURLConnection httpURLConnection = (HttpURLConnection) url.openConnection();
-            httpURLConnection.setRequestMethod("POST");
-            httpURLConnection.setRequestProperty("accept", "*/*");
-            httpURLConnection.setDoOutput(true);
-            httpURLConnection.setDoInput(true);
-            //httpURLConnection.setConnectTimeout(5000);
-            //httpURLConnection.setReadTimeout(5000);
-            if(json != null)
-                httpURLConnection.getOutputStream().write(json.toString().getBytes());
+    private UserData getUserData(String userID, Boolean create){
+        synchronized (mLock){
+            UserData userData = null;
+            if(create){
+                userData = mUserMap.computeIfAbsent(userID, k -> new UserData());
+                userData.userID = userID;
+                userData.userHash = OsnUtils.getHash(userID);
+                mUserMap.put(userData.userHash, userData);
+            }
             else
-                httpURLConnection.connect();
-            if (httpURLConnection.getResponseCode() != 200){
-                json = errResponse(httpURLConnection.getResponseCode());
+                userData = mUserMap.get(userID);
+            return userData;
+        }
+    }
+    private JSONObject makeMessage(String command, String from, String to, JSONObject content, String privateKey){
+        OsnUtils.logInfo("command = " + command + ", content = "+content.toString());
+        String encData = ECUtils.ECEncrypt(to, content.toString().getBytes());
+        String time = String.valueOf(System.currentTimeMillis());
+        String data = from+to+encData+time;
+        String hash = ECUtils.hashOsnData(data.getBytes());
+        String sign = ECUtils.signOsnData(privateKey, data.getBytes());
+        JSONObject json = new JSONObject();
+        json.put("command", command);
+        json.put("from", from);
+        json.put("to", to);
+        json.put("crypto", "yes");
+        json.put("sign", sign);
+        json.put("hash", hash);
+        json.put("timestamp", time);
+        json.put("content", encData);
+        return json;
+    }
+    private Boolean checkMessage(JSONObject json){
+        String from = json.getString("from");
+        String to = json.getString("to");
+        String content = json.getString("content");
+        String time = json.getString("timestamp");
+        if(from == null || to == null || content == null || time == null){
+            OsnUtils.logInfo("same data miss");
+            return false;
+        }
+        String data = from+to+content+time;
+        String hash = ECUtils.hashOsnData(data.getBytes());
+        if (hash.equalsIgnoreCase(json.getString("hash")) &&
+                ECUtils.verifyOsnData(from, data.getBytes(), json.getString("sign")))
+            return true;
+        return false;
+    }
+    private JSONObject takeMessage(JSONObject json, String privateKey){
+        try {
+            String from = json.getString("from");
+            String to = json.getString("to");
+            String content = json.getString("content");
+            String time = json.getString("timestamp");
+            if(from == null || to == null || content == null || time == null){
+                OsnUtils.logInfo("same data miss");
+                return error("same data miss");
+            }
+            String data = from+to+content+time;
+            String hash = ECUtils.hashOsnData(data.getBytes());
+            if (hash.equalsIgnoreCase(json.getString("hash")) &&
+                ECUtils.verifyOsnData(from, data.getBytes(), json.getString("sign"))) {
+                byte[] rawData = ECUtils.ECDecrypt(privateKey, content);
+                return JSONObject.parseObject(new String(rawData));
             }
             else {
-                InputStream inputStream = httpURLConnection.getInputStream();
-                json = getBody(inputStream);
+                OsnUtils.logInfo("verify failed");
+                return errVerify();
             }
         }
         catch (Exception e){
-            e.printStackTrace();
-            json = errExcept(e.getMessage());
+            OsnUtils.logInfo(e.toString());
+            json = error(e.toString());
         }
         return json;
     }
-    private boolean verifySign(MsgData msgData, MsgAuth msgAuth){
-        boolean auth = false;
+    private void queneMessage(JSONObject json){
         try {
-            auth = ECUtils.verifySign(msgData.to, msgData.hash, msgAuth.sign);
-        }
-        catch (Exception e){
-            LogFile.logInfo("verify sign:" + e.getMessage());
-        }
-        LogFile.logInfo("verifySign:" + auth + ", hash: " + msgAuth.hash + ", sign: " + msgAuth.sign);
-        return auth;
-    }
-    private void MsgComplete(HttpExchange exchange, JSONObject json){
-        try {
-            MsgAuth msgAuth = json2Auth(json);
-            if(msgAuth.from == null){
-                LogFile.logInfo("MsgComplete: format error -> "+exchange.getRemoteAddress().toString());
-                respone(exchange, errFormat());
-                return;
+            String user = json.getString("to");
+            UserData userData = getUserData(user, false);
+            if(userData == null) {
+                String toHash = OsnUtils.getHash(user);
+                List<JSONObject> list = mHashMsg.computeIfAbsent(toHash, k -> new LinkedList<>());
+                list.add(json);
+                OsnUtils.logInfo("to: " + user);
+                sendSocketJson(json);
             }
-            LogFile.logInfo("MsgComplete from: " + msgAuth.from + ", to: " + msgAuth.to);
-            String toHash = IDUtil.GetHash(msgAuth.to);
-            LinkedList<MsgData> linkedList = mHashMsg.get(toHash);
-            if(linkedList == null){
-                LogFile.logInfo("MsgComplete: no find data");
-                respone(exchange, errNoData());
-                return;
-            }
-            MsgData msgData = mHashAuth.get(msgAuth.hash);
-            if(msgData == null){
-                LogFile.logInfo("MsgComplete: no find data");
-                respone(exchange, errNoData());
-                return;
-            }
-            if(msgData.ip == null){
-                json.clear();
-                if(verifySign(msgData, msgAuth))
-                    msgData.obj.remove(msgData);
-                else
-                    json = errVerify();
-            }
-            else{
-                msgData.obj.remove(msgData);
-                json.put("ip", msgData.ip);
-                json = doPost(mOSNConnector, json);
+            else {
+                sendChannelJson(userData.socketChannel, json);
             }
         }
         catch (Exception e){
-            LogFile.logInfo("MsgComplete:"+e.getMessage());
-            json = errExcept(e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
-        respone(exchange, json);
     }
-    private void GetMessage(HttpExchange exchange, JSONObject json){
-        try {
-            String userHash = null;
+
+    private void notifyUpdateGroup(GroupData group, JSONObject updateInfo){
+        OsnUtils.logInfo("groupID = "+group.osnID+", updateList = "+updateInfo.toString());
+        for(int i = 0; i < group.userList.size(); ++i) {
+            JSONObject json = group.userList.getJSONObject(i);
             String user = json.getString("user");
-            if(user == null){
-                userHash = json.getString("to");
-                if(userHash == null){
-                    LogFile.logInfo("GetMessage: unknow user");
-                    respone(exchange, errNoUser());
-                    return;
-                }
-                user = "<remote>";
+            json = makeMessage("groupupdate", group.osnID, user, updateInfo, group.privateKey);
+            queneMessage(json);
+        }
+    }
+    private void distGroupMessage(JSONObject json, GroupData group){
+        OsnUtils.logInfo("groupID = "+group.osnID);
+        String content = json.getString("content");
+        String from = json.getString("from");
+        byte[] rawMsg = ECUtils.ECDecrypt(group.privateKey, content);
+        for(int i = 0; i < group.userList.size(); ++i){
+            JSONObject jsonUser = group.userList.getJSONObject(i);
+            String user = jsonUser.getString("user");
+            if(user.equalsIgnoreCase(from))
+                continue;
+            JSONObject jsonMsg = JSONObject.parseObject(new String(rawMsg));
+            jsonMsg.put("from", from);
+            jsonMsg = makeMessage("message", group.osnID, user, jsonMsg, group.privateKey);
+            queneMessage(jsonMsg);
+        }
+    }
+    private void clientMessage(JSONObject json){
+        try {
+            String user = json.getString("to");
+            UserData userData = getUserData(user, false);
+            if (userData == null)
+                OsnUtils.logInfo("forward to no login user = " + user);
+            else
+                sendChannelJson(userData.socketChannel, json);
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+    }
+
+    private JSONObject MsgComplete(JSONObject json){
+        try {
+            String from = json.getString("from");
+            String to = json.getString("to");
+            String hash = json.getString("hash");
+            String sign = json.getString("sign");
+            if(!ECUtils.verifyOsnHash(to, hash, sign)){
+                OsnUtils.logInfo("verify error");
+                return errVerify();
+            }
+            OsnUtils.logInfo("from: " + from + ", to: " + to);
+            String toHash = OsnUtils.getHash(to);
+            List<JSONObject> list = mHashMsg.get(toHash);
+            if(list == null || list.size() == 0){
+                OsnUtils.logInfo("no find data");
+                return errok();
+            }
+//            Iterator<JSONObject> iterator = list.iterator();
+//            while(iterator.hasNext()){
+//                JSONObject jsonObject = iterator.next();
+//                if(jsonObject.getString("hash").equalsIgnoreCase(hash)){
+//                    if(jsonObject.containsKey("ip")){
+//                        json.put("ip", jsonObject.getString("ip"));
+//                        json = doPost(mOSNConnector, json);
+//                    }
+//                    else
+//                        json = errok();
+//                    iterator.remove();
+//                    break;
+//                }
+//            }
+            json = errok();
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+            json = error(e.toString());
+        }
+        return json;
+    }
+    private JSONObject GetMessage(JSONObject json){
+        try {
+            String userID = json.getString("user");
+            if(userID == null){
+                OsnUtils.logInfo(errFormat().toString());
+                return errFormat();
+            }
+            UserData userData = getUserData(userID, false);
+            if(userData == null && json.getString("ip") == null){
+                OsnUtils.logInfo("user no login = "+userID);
+                return errUser();
+            }
+            String userHash = OsnUtils.getHash(userID);
+            JSONArray array = new JSONArray();
+            if (mHashMsg.containsKey(userHash)) {
+                List<JSONObject> list = mHashMsg.get(userHash);
+                array.addAll(list);
+                for (JSONObject o : list)
+                    OsnUtils.logInfo("message = " + o.getString("command") + ", from = " + o.getString("from") + ", to = " + o.getString("to"));
+                list.clear();
+            }
+            json = errok();
+            json.put("data", array);
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+            json = error(e.toString());
+        }
+        return json;
+    }
+    private void RecvMessage(JSONObject json){
+        try {
+            String user = json.getString("to");
+            if (ECUtils.isGroup(user)) {
+                GroupData group = SqliteUtil.readGroup(user);
+                if(group == null)
+                    OsnUtils.logInfo("unknown group message = " + user);
+                else
+                    distGroupMessage(json, group);
             }
             else
-                userHash = IDUtil.GetHash(user);
-            //logInfo("[GetMessage] user: "+ user +", userHash: "+userHash);
-
-            json.clear();
-            json.put("errCode", "0");
-            getUsermsg(userHash, json);
-            //logInfo("[message] " + json.toString());
+                clientMessage(json);
         }
         catch (Exception e){
-            LogFile.logInfo("GetMessage:"+e.getMessage());
-            json = errExcept(e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
-        respone(exchange, json);
     }
-    private void GetMsgList(HttpExchange exchange, JSONObject json){
-        String hash = json.getString("hash");
-        LogFile.logInfo("GetMsgList <- hash: " + hash);
-        json.clear();
-        json.put("command", "userlist");
-        getUserlist(hash, json);
-        respone(exchange, json);
-    }
-    private void SendMessage(HttpExchange exchange, JSONObject json){
+    private JSONObject SendMessage(JSONObject json){
         try {
-            if(!json.containsKey("from") || !json.containsKey("to")){
-                LogFile.logInfo("SendMessage: format error -> " + exchange.getRemoteAddress().toString());
-                respone(exchange, errFormat());
-                return;
+            if(!checkMessage(json)){
+                OsnUtils.logInfo("verify failed");
+                return errVerify();
             }
-            MsgData msgData = json2Msg(json);
-            String toHash = IDUtil.GetHash(msgData.to);
-            LinkedList<MsgData> linkedList = mHashMsg.computeIfAbsent(toHash, k -> new LinkedList<>());
-            linkedList.add(msgData);
-            msgData.obj = linkedList;
-            LogFile.logInfo("SendMessage from: "+ msgData.from +", to: "+ msgData.to);
-            json = doPost(mOSNConnector, json);
+            String user = json.getString("to");
+            if(ECUtils.isGroup(user)){
+                GroupData group = SqliteUtil.readGroup(user);
+                if(group == null) {
+                    OsnUtils.logInfo("forward group message osnID = " + user);
+                    queneMessage(json);
+                }
+                else{
+                    OsnUtils.logInfo("notify group message osnID = " + user);
+                    distGroupMessage(json, group);
+                }
+            }
+            else {
+                OsnUtils.logInfo("user = " + json.getString("from") + ", to = " + user);
+                queneMessage(json);
+            }
+            json = errok();
         }
         catch (Exception e){
-            LogFile.logInfo("SendMessage:"+e.getMessage());
-            json = errExcept(e.getMessage());
+            OsnUtils.logInfo(e.toString());
+            json = error(e.toString());
         }
-        respone(exchange, json);
+        return json;
     }
-    private void FindUser(HttpExchange exchange, JSONObject json){
-        String hash = json.getString("hash");
-        String ip = json.getString("ip");
+    private JSONObject FindUser(JSONObject json){
+        try {
+            String hash = json.getString("hash");
+            String ip = json.getString("ip");
 
-        LogFile.logInfo("FindUser ip: " + ip + ", hash: " + hash);
-        respone(exchange, errok());
-
-        if(mUserMap.containsKey(hash)) {
-            json.clear();
-            json.put("command", "getmsglist");
-            json.put("hash", hash);
-            json.put("ip", ip);
-            json = doPost(mOSNConnector, json);
-
-            LogFile.logInfo("FindUser: getmsglist -> ip: " + ip + ", has:" + hash);
-
-            UserData userData = mUserMap.get(hash);
-
-            json.clear();
+            OsnUtils.logInfo("ip: " + ip + ", hash: " + hash);
+            if(ip == null){
+                OsnUtils.logInfo("no ip");
+                return null;
+            }
+            UserData userData = getUserData(hash, false);
+            if (userData == null) {
+                OsnUtils.logInfo("no login user/group, hash = " + hash);
+                return null;
+            }
+            json = new JSONObject();
             json.put("command", "getmsg");
-            json.put("to", userData.userHash);
             json.put("user", userData.userID);
-            json.put("from", "");
-            json.put("ip", ip);
-            LogFile.logInfo("Finder: " + json.toString());
-            json = doPost(mOSNConnector, json);
-            setHashmsg(hash, json, ip);
-
-            LogFile.logInfo("FindUser: getmsg -> user: " + userData.userID);
-            //logInfo("[message] " + json);
+            return json;
         }
-    }
-    private void Login(HttpExchange exchange, JSONObject json){
-        String userID = json.getString("user");
-        UserData userData = mUserMap.computeIfAbsent(userID, k -> new UserData());
-        userData.userID = userID;
-        userData.userHash = IDUtil.GetHash(userID);
-        mUserMap.put(userData.userHash, userData);
-        //logInfo("[Login] user: " + userID + ", userHash: " + userData.userHash);
-        json.clear();
-        json.put("errCode", "0");
-        json.put("userHash", userData.userHash);
-        json.put("serviceID", mServiceOsnID);
-        respone(exchange, json);
-    }
-    private void CreateGroup(HttpExchange exchange, JSONObject json){
-        String data = json.getString("data");
-        String owner = json.getString("owner");
-        String sign = json.getString("sign");
-        if(!ECUtils.verifySign(owner, data, sign)){
-            LogFile.logInfo("CreateGroup: verify sign failed, owner="+owner);
-            respone(exchange, errVerify());
-            return;
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
         }
-
-        byte[] decData = ECUtils.ECDecrypt(mServiceKey, data);
-        String groupInfo = new String(decData);
-        json = JSONObject.parseObject(groupInfo);
-        json.put("owner", owner);
-        json.put("userList", "");
-        LogFile.logInfo("CreateGroup: groupID="+json.getString("groupID")+", owner="+owner);
-        if(SqliteUtil.insertGroup(json))
-            respone(exchange, errok());
-        else
-            respone(exchange, errUpdatetDB());
+        return null;
     }
-    public void handle(HttpExchange exchange) {
-        String requestMethod = exchange.getRequestMethod();
-        if(requestMethod.equalsIgnoreCase("POST")){
-            InputStream inputStream = exchange.getRequestBody();
-            JSONObject json = getBody(inputStream);
-            if(json.containsKey("errCode")){
-                respone(exchange, json);
-                return;
+    private void Heart(JSONObject json){
+        try{
+            String userID = json.getString("user");
+            UserData userData = getUserData(userID, false);
+            if(userData != null) {
+                userData.timelive = System.currentTimeMillis();
+                json = errok();
             }
+            //OsnUtils.logInfo("userID = "+userID);
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+    }
+    private JSONObject Login(JSONObject json, SocketChannel socketChannel, SelectionKey key){
+        JSONObject result = null;
+        try {
+            String userID = json.getString("user");
+            if (userID == null) {
+                OsnUtils.logInfo(errFormat().toString());
+                result = errFormat();
+            }
+            else {
+                UserData userData = getUserData(userID, true);
+                userData.socketChannel = socketChannel;
+                userData.key = key;
+                userData.timelive = System.currentTimeMillis();
+                OsnUtils.logInfo("userID = " + userID);
+
+                result = errok();
+                result.put("serviceID", mServiceOsnID);
+            }
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+            result = error(e.toString());
+        }
+        return result;
+    }
+    private JSONObject CreateGroup(JSONObject json){
+        try {
+            json = takeMessage(json, mServiceKey);
+            if(json.containsKey("errCode"))
+                return json;
+            String groupID = json.getString("group");
+            if (SqliteUtil.readGroup(groupID) != null) {
+                OsnUtils.logInfo("groupID exist = " + groupID);
+                return error("groupID exist");
+            }
+            String owner = json.getString("owner");
+            GroupData group = new GroupData(groupID, json.getString("name"), json.getString("privateKey"),
+                    json.getString("shadowKey"), json.getString("owner"), new JSONArray());
+            OsnUtils.logInfo("groupID = " + json.getString("group") + ", owner = " + owner);
+            if (SqliteUtil.insertGroup(group)) {
+                getUserData(groupID, true);
+                return errok();
+            }
+            json = errUpdateDB();
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+            json = error(e.toString());
+        }
+        return json;
+    }
+    private JSONObject AddMember(JSONObject json){
+        try{
+            String groupID = json.getString("to");
+            GroupData group = SqliteUtil.readGroup(groupID);
+            if(group == null){
+                OsnUtils.logInfo("group no exist = " + groupID);
+                if(!json.containsKey("ip")) {
+                    queneMessage(json);
+                    return null;
+                }
+                return error("group no exist");
+            }
+            JSONObject data = takeMessage(json, group.privateKey);
+            if(data.containsKey("errCode"))
+                return data;
+            JSONArray userList = data.getJSONArray("userList");
+            JSONArray addList = new JSONArray();
+            for(int i = 0; i < userList.size(); ++i){
+                boolean finded = false;
+                JSONObject newJson = userList.getJSONObject(i);
+                if(!newJson.containsKey("name") || !newJson.containsKey("user")) {
+                    OsnUtils.logInfo("need name and user");
+                    break;
+                }
+                for(int j = 0; j < group.userList.size(); ++j){
+                    JSONObject oldJson = group.userList.getJSONObject(i);
+                    if(newJson.getString("user").equalsIgnoreCase(oldJson.getString("user"))) {
+                        finded = true;
+                        break;
+                    }
+                }
+                if(!finded)
+                    addList.add(newJson);
+            }
+            OsnUtils.logInfo("groupID = "+group.osnID+", userList = "+addList.toString());
+            group.userList.addAll(addList);
+            if(SqliteUtil.writeGroup(group)){
+                JSONObject jsonNotify = new JSONObject();
+                jsonNotify.put("userList", group.userList);
+                notifyUpdateGroup(group, jsonNotify);
+                json = errok();
+            }
+            else
+                json = errUpdateDB();
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+            json = error(e.toString());
+        }
+        return json;
+    }
+    private JSONObject GetGroupInfo(JSONObject json){
+        String groupID = json.getString("to");
+        String user = json.getString("from");
+        OsnUtils.logInfo("group = "+groupID+", user = "+user);
+        GroupData group = SqliteUtil.readGroup(groupID);
+        if(group == null){
+            OsnUtils.logInfo("group no find = "+groupID);
+            if(!json.containsKey("ip"))
+                queneMessage(json);
+            return null;
+        }
+        if(!isMember(group, user)){
+            OsnUtils.logInfo("user no in group = "+user);
+            return errRight();
+        }
+        JSONObject data = group.toJson();
+        json = makeMessage("groupinfo", group.osnID, user, data, group.privateKey);
+        json.put("errCode", "success");
+        return json;
+    }
+    private byte[] makePackage(JSONObject json){
+        byte[] jsonData = json.toString().getBytes();
+        byte[] data = new byte[jsonData.length+4];
+        data[0] = (byte)((jsonData.length>>24)&0xff);
+        data[1] = (byte)((jsonData.length>>16)&0xff);
+        data[2] = (byte)((jsonData.length>>8)&0xff);
+        data[3] = (byte)(jsonData.length&0xff);
+        System.arraycopy(jsonData, 0, data, 4, jsonData.length);
+        return data;
+    }
+    private void sendSocketJson(JSONObject json){
+        try {
+            OsnUtils.logInfo("command: " + json.getString("command"));
+            byte[] data = makePackage(json);
+            Socket socket = new Socket(mOsnConnector, mOsnPort);
+            OutputStream outputStream = socket.getOutputStream();
+            outputStream.write(data);
+            socket.close();
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+    }
+    private void sendChannelJson(SocketChannel socketChannel, JSONObject json){
+        try {
+            byte[] data = makePackage(json);
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+            socketChannel.write(buffer);
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+    }
+    private void handleMessage(SelectionKey key, String text){
+        try {
+            JSONObject json = JSONObject.parseObject(text);
+            SocketChannel socketChannel = (SocketChannel)key.channel();
+
+            JSONObject result = null;
             String command = json.getString("command");
-            if ("getmsg".equalsIgnoreCase(command)) {
-                GetMessage(exchange, json);
-            } else if ("getmsglist".equalsIgnoreCase(command)) {
-                GetMsgList(exchange, json);
-            } else if ("login".equalsIgnoreCase(command)) {
-                Login(exchange, json);
-            } else if ("message".equalsIgnoreCase(command)) {
-                SendMessage(exchange, json);
-            } else if ("complete".equalsIgnoreCase(command)) {
-                MsgComplete(exchange, json);
-            } else if ("finduser".equalsIgnoreCase(command)) {
-                FindUser(exchange, json);
-            } else if("creategroup".equalsIgnoreCase(command)){
-                CreateGroup(exchange, json);
-            } else {
-                respone(exchange, errCommand());
+
+            if("heart".equalsIgnoreCase(command))
+                Heart(json);
+            else if ("login".equalsIgnoreCase(command)) {
+                result = Login(json, socketChannel, key);
+                result.put("command", command);
             }
+            else if("getmsg".equalsIgnoreCase(command)){
+                result = GetMessage(json);
+                result.put("command", "msglist");
+            }
+            else if("msglist".equalsIgnoreCase(command)){
+                JSONArray array = json.getJSONArray("data");
+                for(int i = 0; i < array.size(); ++i){
+                    JSONObject msgData = array.getJSONObject(i);
+                    command = msgData.getString("command");
+                    switch(command){
+                        //远端消息
+                        case "message":
+                            RecvMessage(msgData);
+                            break;
+                        case "groupupdate":
+                            clientMessage(msgData);
+                            break;
+
+                        //远端命令
+                        case "getgroupinfo":
+                            result = GetGroupInfo(msgData);
+                            if(result != null) {
+                                result.put("ip", json.getString("ip"));
+                                sendSocketJson(result);
+                            }
+                            break;
+                    }
+                }
+                result = null;
+            }
+            else if("message".equalsIgnoreCase(command)) {
+                result = SendMessage(json);
+                result.put("command", "sendmsg");
+            }
+            else if("groupinfo".equalsIgnoreCase(command)){
+                clientMessage(json);
+            }
+            else if("finduser".equalsIgnoreCase(command))
+                result = FindUser(json);
+            else if ("complete".equalsIgnoreCase(command))
+                MsgComplete(json);
+            else if("creategroup".equalsIgnoreCase(command)) {
+                result = CreateGroup(json);
+                result.put("command", command);
+            }
+            else if("addmember".equalsIgnoreCase(command)) {
+                result = AddMember(json);
+                if(result != null)
+                    result.put("command", "addmember");
+            }
+            else if("getgroupinfo".equalsIgnoreCase(command)) {
+                result = GetGroupInfo(json);
+            }
+            else{
+                OsnUtils.logInfo("unknown command: " + command);
+                result = error("unknown command: "+command);
+            }
+            if(result != null) {
+                if (json.containsKey("ip")) {
+                    result.put("ip", json.getString("ip"));
+                    sendSocketJson(result);
+                } else {
+                    sendChannelJson(socketChannel, result);
+                }
+            }
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+    }
+    private void handlePackage(SelectionKey key){
+        try {
+            int readLength = 0;
+            SocketChannel socketChannel = (SocketChannel) key.channel();
+            byte[] recv = new byte[4096];
+            ByteBuffer buffer = ByteBuffer.wrap(recv);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            while(readLength >= 0) {
+                while(true){
+                    buffer.clear();
+                    readLength = socketChannel.read(buffer);
+                    if(readLength <= 0)
+                        break;
+                    baos.write(recv, 0, readLength);
+                }
+                if(baos.size() == 0)
+                    break;
+                byte[] data = baos.toByteArray();
+                int length = ((data[0] & 0xff) << 24) | ((data[1] & 0xff) << 16) | ((data[2] & 0xff) << 8) | (data[3] & 0xff);
+                if (length + 4 > data.length) {
+                    OsnUtils.logInfo("package length error: " + String.valueOf(length) + ", data length: " + String.valueOf(data.length));
+                    break;
+                }
+                baos.reset();
+                baos.write(data, 4, length);
+                handleMessage(key, baos.toString());
+                baos.reset();
+                baos.write(data, length+4, data.length-length-4);
+            }
+            if(readLength < 0){
+                //OsnUtils.logInfo("client disconnect: " + socketChannel.toString());
+                key.cancel();
+                socketChannel.close();
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    private void handleTimeout(){
+        try {
+            synchronized (mLock) {
+                long timeNow = System.currentTimeMillis();
+                ArrayList<UserData> removeList = new ArrayList<>();
+                Iterator<Map.Entry<String, UserData>> iterator = mUserMap.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    Map.Entry<String, UserData> entry = iterator.next();
+                    UserData userData = entry.getValue();
+                    if(userData.timelive > 0) {
+                        long alive = timeNow - userData.timelive;
+                        if (alive < 0 || alive > 60 * 1000)
+                            removeList.add(userData);
+                    }
+                }
+                for(UserData userData:removeList){
+                    //OsnUtils.logInfo("client timeout: " + userData.socketChannel.toString());
+                    userData.key.cancel();
+                    userData.socketChannel.close();
+                    mUserMap.remove(userData.userID);
+                    mUserMap.remove(userData.userHash);
+                }
+            }
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+    }
+    private void StartServer(){
+        try {
+            OsnUtils.mLogFileName = mLogFileName;
+            SqliteUtil.initSqlite();
+
+            String[] serviceOsnID = SqliteUtil.getServiceID();
+            if(serviceOsnID == null) {
+                serviceOsnID = ECUtils.createOsnID("service");
+                SqliteUtil.setServiceID(serviceOsnID);
+            }
+            mServiceOsnID = serviceOsnID[0];
+            mServiceKey = serviceOsnID[1];
+
+            ArrayList<String> groupList = SqliteUtil.listGroup();
+            for(String o:groupList)
+                getUserData(o, true);
+
+            Selector selector = Selector.open();
+            ServerSocketChannel serverChannel0 = ServerSocketChannel.open();
+            serverChannel0.socket().bind(new InetSocketAddress(mIMServerPort));
+            serverChannel0.configureBlocking(false);
+            serverChannel0.register(selector, SelectionKey.OP_ACCEPT);
+            OsnUtils.logInfo("Start IMServer in port 8100/8200");
+            while (true){
+                if(selector.select(5000) == 0){
+                    handleTimeout();
+                    continue;
+                }
+                Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
+                while (iterator.hasNext()){
+                    SelectionKey key = iterator.next();
+                    if (key.isAcceptable()) {
+                        ServerSocketChannel socketChannel = (ServerSocketChannel) key.channel();
+                        SocketChannel channel = socketChannel.accept();
+                        channel.configureBlocking(false);
+                        channel.register(selector, SelectionKey.OP_READ);
+                        //OsnUtils.logInfo("client connect: " + channel.toString());
+                    }
+                    if (key.isReadable()) {
+                        key.interestOps(key.interestOps()&~SelectionKey.OP_READ);
+                        mExecutorService.submit(() -> {
+                            handlePackage(key);
+                            key.interestOps(key.interestOps()|SelectionKey.OP_READ);
+                        });
+                    }
+                    if (key.isWritable()) {
+                    }
+                    iterator.remove();
+                }
+            }
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
         }
     }
 }

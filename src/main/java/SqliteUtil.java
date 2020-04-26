@@ -1,10 +1,10 @@
 import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
 
 public class SqliteUtil {
     static Connection mConnect = null;
@@ -13,29 +13,30 @@ public class SqliteUtil {
         try {
             Statement stmt = mConnect.createStatement();
             String sql = "CREATE TABLE serviceOsnID " +
-                        "(OsnID TEXT PRIMARY KEY   NOT NULL, " +
-                        " PrivateKey     TEXT    NOT NULL)";
+                        "(osnID char(160) PRIMARY KEY   NOT NULL, " +
+                        " privateKey     char(160)    NOT NULL)";
             stmt.executeUpdate(sql);
             stmt.close();
         }
         catch (Exception e){
-            LogFile.logInfo("createServiceOsnIDTable:" + e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
     }
     private static void createGroupOsnIDTable(){
         try {
             Statement stmt = mConnect.createStatement();
             String sql = "CREATE TABLE groupOsnID " +
-                        "(OsnID TEXT PRIMARY KEY   NOT NULL, " +
-                        " PrivateKey     TEXT    NOT NULL, " +
-                        " ShadowKey      TEXT    NOT NULL, " +
-                        " Owner          TEXT    NOT NULL, " +
-                        " UserList       TEXT    NOT NULL)";
+                        "(osnID char(160) PRIMARY KEY   NOT NULL, " +
+                        " name           nvarchar(20)    NOT NULL, " +
+                        " owner          char(160)    NOT NULL, " +
+                        " privateKey     char(160)    NOT NULL, " +
+                        " shadowKey      char(160)    NOT NULL, " +
+                        " userList       TEXT    NOT NULL)";
             stmt.executeUpdate(sql);
             stmt.close();
         }
         catch (Exception e){
-            LogFile.logInfo("createGroupOsnIDTable:" + e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
     }
     public static void initSqlite(){
@@ -46,7 +47,7 @@ public class SqliteUtil {
             createGroupOsnIDTable();
 
         } catch ( Exception e ) {
-            LogFile.logInfo("initSqlite:"+e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
     }
     public static String[] getServiceID(){
@@ -54,63 +55,96 @@ public class SqliteUtil {
             Statement stmt = mConnect.createStatement();
             ResultSet rs = stmt.executeQuery( "SELECT * FROM serviceOsnID;" );
             if(rs.next())
-                return new String[]{rs.getString("OsnID"), rs.getString("PrivateKey")};
+                return new String[]{rs.getString("osnID"), rs.getString("privateKey")};
         }
         catch (Exception e){
-            LogFile.logInfo("getServiceID:"+e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
         return null;
     }
     public static void setServiceID(String[] osnID){
         try {
             Statement stmt = mConnect.createStatement();
-            String sql = "INSERT INTO serviceOsnID (OsnID,PrivateKey) " +
+            String sql = "INSERT INTO serviceOsnID (osnID,privateKey) " +
                     "VALUES ('" + osnID[0] + "', '"+ osnID[1] + "');";
             stmt.executeUpdate(sql);
             stmt.close();
         }
         catch (Exception e){
-            LogFile.logInfo("setServiceID:" + e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
     }
-    public static boolean insertGroup(JSONObject json){
+    public static boolean insertGroup(GroupData group){
         try {
             Statement stmt = mConnect.createStatement();
-            String sql = "INSERT INTO groupOsnID (OsnID,PrivateKey,ShadowKey,Owner,UserList) " +
-                    "VALUES ('" + json.getString("groupID") + "', '" +
-                    json.getString("privaKey") + "','" +
-                    json.getString("shadowKey") + "','" +
-                    json.getString("owner") + "','"+
-                    "'')";
+            String sql = "INSERT INTO groupOsnID (osnID,Name,privateKey,shadowKey,owner,userList) " +
+                    "VALUES ('" +
+                    group.osnID + "', '" +
+                    group.name + "', '" +
+                    group.privateKey + "','" +
+                    group.shadowKey + "','" +
+                    group.owner + "','" +
+                    group.userList.toString() + "');";
             int count = stmt.executeUpdate(sql);
             stmt.close();
-            LogFile.logInfo("insertGroup: " + json.getString("groupID")+ ", owner: "+json.getString("owner"));
+            OsnUtils.logInfo(group.osnID+ ", owner: "+group.owner);
             return count != 0;
         }
         catch (Exception e){
-            LogFile.logInfo("insertGroup: " + e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
         return false;
     }
-    public static JSONObject readGroup(String groupID){
-        JSONObject json = null;
+    public static GroupData readGroup(String groupID){
+        GroupData group = null;
         try {
             Statement stmt = mConnect.createStatement();
-            String sql = "select * from groupOsnID where OsnID="+groupID;
+            String sql = "select * from groupOsnID where osnID='"+groupID+"';";
             ResultSet rs = stmt.executeQuery(sql);
             if(rs.next()){
-                json = new JSONObject();
-                json.put("OsnID", rs.getString("OsnID"));
-                json.put("PrivateKey", rs.getString("PrivateKey"));
-                json.put("ShadowKey", rs.getString("ShadowKey"));
-                json.put("Owner", rs.getString("Owner"));
-                json.put("UserList", rs.getString("UserList"));
+                String userList = rs.getString("userList");
+                JSONArray jsonArray = JSONArray.parseArray(userList);
+                group = new GroupData(rs.getString("osnID"),
+                        rs.getString("name"),
+                        rs.getString("privateKey"),
+                        rs.getString("shadowKey"),
+                        rs.getString("owner"),
+                        jsonArray);
             }
             stmt.close();
         }
         catch (Exception e){
-            LogFile.logInfo("readGroup: " + e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
-        return json;
+        return group;
+    }
+    public static boolean writeGroup(GroupData group){
+        try{
+            Statement stmt = mConnect.createStatement();
+            String sql = "update groupOsnID set userList='"+group.userList +
+                    "' where osnID='"+group.osnID+"';";
+            stmt.executeUpdate(sql);
+            stmt.close();
+            return true;
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+        return false;
+    }
+    public static ArrayList<String> listGroup(){
+        ArrayList<String> groupList = new ArrayList<String>();
+        try {
+            Statement stmt = mConnect.createStatement();
+            String sql = "select * from groupOsnID;";
+            ResultSet rs = stmt.executeQuery(sql);
+            while(rs.next())
+                groupList.add(rs.getString("osnID"));
+            stmt.close();
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+        return groupList;
     }
 }

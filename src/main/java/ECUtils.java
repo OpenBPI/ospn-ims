@@ -23,6 +23,7 @@ import java.security.spec.ECPrivateKeySpec;
 import java.security.spec.ECPublicKeySpec;
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
+import java.util.Random;
 
 import static io.github.novacrypto.hashing.Sha256.sha256;
 
@@ -34,15 +35,6 @@ public class ECUtils {
     public static final String ALGORITHM = "EC";
     public static final String SPACE_NAME = "prime256v1";// eq prime256v1
 
-    private static PublicKey getPublicKeyFromBytes(byte[] pubKey) throws NoSuchAlgorithmException, InvalidKeySpecException {
-        ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec(PRIME_256V1);
-        KeyFactory kf = KeyFactory.getInstance(ECDSA, new BouncyCastleProvider());
-        ECNamedCurveSpec params = new ECNamedCurveSpec(PRIME_256V1, spec.getCurve(), spec.getG(), spec.getN());
-        ECPoint point = ECPointUtil.decodePoint(params.getCurve(), pubKey);
-        ECPublicKeySpec pubKeySpec = new ECPublicKeySpec(point, params);
-        ECPublicKey pk = (ECPublicKey) kf.generatePublic(pubKeySpec);
-        return pk;
-    }
     private static ECPublicKey getPulicKeyFromAddress(String address) {
         String flag = address.substring(0, 3);
         if (!flag.equals("OSN")) {
@@ -64,7 +56,7 @@ public class ECUtils {
                 return getPublicKeyFromHex(pub);
             }
         } catch (Exception e) {
-            LogFile.logInfo("getPulicKeyFromAddress: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
             return null;
         }
         return null;
@@ -81,7 +73,7 @@ public class ECUtils {
             pk = (ECPublicKey) kf.generatePublic(pubKeySpec);
             return pk;
         } catch (Exception e) {
-            LogFile.logInfo("getPublicKeyFromHex: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
         return null;
     }
@@ -95,7 +87,7 @@ public class ECUtils {
             ECPublicKey publicKey = (ECPublicKey) keyFactory.generatePublic(pubSpec);
             return publicKey;
         } catch (Exception e) {
-            LogFile.logInfo("getPublicKeyFromPrivateKey: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
         return null;
     }
@@ -110,25 +102,80 @@ public class ECUtils {
             ECPrivateKey pk = (ECPrivateKey)kf.generatePrivate(keySpec);
             return pk;
         } catch (Exception e) {
-            LogFile.logInfo("getEcPrivateKeyFromHex: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
         }
         return null;
     }
 
-    public static boolean verifySign(String osnID, String origData, String signData){
+    public static String hashOsnData(byte[] data){
+        byte[] hash = sha256(data);
+        return Base58.encode(hash);
+    }
+    public static String signOsnData(String privkey, byte[] data){
         try {
-            ECPublicKey pkey = ECUtils.getPulicKeyFromAddress(osnID);
-            //byte[] data = Base58.decode(origData);
-            byte[] sign = Base58.decode(signData);
-            Signature ecdsaVerify = Signature.getInstance(SIGN_ALGORITHM, new BouncyCastleProvider());
-            ecdsaVerify.initVerify(pkey);
-            ecdsaVerify.update(origData.getBytes());
-            return ecdsaVerify.verify(sign);
+            byte[] hash = sha256(data);
+            ECPrivateKey privatekey = getEcPrivateKeyFromHex(privkey);
+            Signature signer = Signature.getInstance(SIGN_ALGORITHM);
+            signer.initSign(privatekey);
+            signer.update(hash);
+            byte[] signdata = signer.sign();
+            return Base58.encode(signdata);
         }
         catch (Exception e){
-            LogFile.logInfo("verifySign:" + e.getMessage());
+            OsnUtils.logInfo(e.toString());
+        }
+        return null;
+    }
+    public static String signOsnHash(String privKey, String hash){
+        try {
+            ECPrivateKey privatekey = getEcPrivateKeyFromHex(privKey);
+            byte[] hashData = Base58.decode(hash);
+            Signature signer = Signature.getInstance(SIGN_ALGORITHM);
+            signer.initSign(privatekey);
+            signer.update(hashData);
+            byte[] signdata = signer.sign();
+            return Base58.encode(signdata);
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+        return null;
+    }
+    public static boolean verifyOsnData(String osnID, byte[] data, String sign){
+        try {
+            byte[] hashData = sha256(data);
+            byte[] signData = Base58.decode(sign);
+            ECPublicKey pkey = ECUtils.getPulicKeyFromAddress(osnID);
+            Signature ecdsaVerify = Signature.getInstance(SIGN_ALGORITHM, new BouncyCastleProvider());
+            ecdsaVerify.initVerify(pkey);
+            ecdsaVerify.update(hashData);
+            return ecdsaVerify.verify(signData);
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
         }
         return false;
+    }
+    public static boolean verifyOsnHash(String osnID, String hash, String sign){
+        try {
+            byte[] hashData = Base58.decode(hash);
+            byte[] signData = Base58.decode(sign);
+            ECPublicKey pkey = ECUtils.getPulicKeyFromAddress(osnID);
+            Signature ecdsaVerify = Signature.getInstance(SIGN_ALGORITHM, new BouncyCastleProvider());
+            ecdsaVerify.initVerify(pkey);
+            ecdsaVerify.update(hashData);
+            return ecdsaVerify.verify(signData);
+        }
+        catch (Exception e){
+            OsnUtils.logInfo(e.toString());
+        }
+        return false;
+    }
+
+    public static Boolean isGroup(String osnid){
+        String osnstr = osnid.substring(3);
+        byte[] data = Base58.decode(osnstr);
+        return data[1] == 1;
     }
 
     public static byte[] ECDecrypt(String priKey, String data){
@@ -138,7 +185,7 @@ public class ECUtils {
     private static byte[] ECDecrypt(ECPrivateKey privateKey, String data){
         try {
             byte[] rawData = Base58.decode(data);
-            short keyLength = (short)((rawData[0]&0xff)|((rawData[1]&0xff)>>8));
+            short keyLength = (short)((rawData[0]&0xff)|((rawData[1]&0xff)<<8));
             byte[] ecData = new byte[keyLength];
             System.arraycopy(rawData,2,ecData,0,keyLength);
             ecData = ECIESDecrypt(privateKey, ecData);
@@ -158,18 +205,57 @@ public class ECUtils {
             return decData;
             //return new String(decData);
         }catch (Exception e){
-            LogFile.logInfo("ECDecrypt: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
+        }
+        return null;
+    }
+    public static String ECEncrypt(String osnID, byte[] data){
+        ECPublicKey pubKey = getPulicKeyFromAddress(osnID);
+        return ECEncrypt(pubKey, data);
+    }
+    private static String ECEncrypt(ECPublicKey publicKey, byte[] data){
+//        byte[] aesKey = new byte[16];
+//        byte[] aesIV = new byte[16];
+//        Random random = new Random();
+//        for(int i = 0; i < 16; ++i){
+//            aesKey[i] = (byte)random.nextInt(256);
+//            aesIV[i] = 0;
+//        }
+        byte[] aesKey = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+        byte[] aesIV = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+        try {
+            IvParameterSpec iv = new IvParameterSpec(aesIV);
+            SecretKeySpec key = new SecretKeySpec(aesKey, "AES");
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, key, iv);
+            byte[] encData = cipher.doFinal(data);
+
+            byte[] encKey = new byte[32];
+            System.arraycopy(aesKey,0,encKey,0,16);
+            System.arraycopy(aesIV,0,encKey,16,16);
+            byte[] encECKey = ECIESEncrypt(publicKey, encKey);
+
+            byte[] eData = new byte[encECKey.length+encData.length+2];
+            eData[0] = (byte)(encECKey.length&0xff);
+            eData[1] = (byte)((encECKey.length)>>8&0xff);
+            System.arraycopy(encECKey,0,eData,2,encECKey.length);
+            System.arraycopy(encData,0,eData,encECKey.length+2,encData.length);
+            return Base58.encode(eData);
+        }catch (Exception e){
+            e.printStackTrace();
         }
         return null;
     }
     private static byte[] ECIESEncrypt(ECPublicKey pubkey, byte[] raw){
         try {
-            Cipher cipher = Cipher.getInstance("ECIESwithAES/NONE/PKCS7Padding",new BouncyCastleProvider());
+            //Cipher cipher = Cipher.getInstance("ECIESwithAES/NONE/PKCS7Padding",new BouncyCastleProvider());
+            Cipher cipher = Cipher.getInstance("ECIES",new BouncyCastleProvider());
+            //Cipher cipher = Cipher.getInstance("ECIESwithAESCBC",new BouncyCastleProvider());
             cipher.init(Cipher.ENCRYPT_MODE, pubkey);
             byte[] cipherText = cipher.doFinal(raw);
             return cipherText;
         } catch (Exception e){
-            LogFile.logInfo("ECIESEncrypt: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
             return null;
         }
     }
@@ -177,11 +263,12 @@ public class ECUtils {
         try {
             //Cipher cipher = Cipher.getInstance("ECIESwithAES/NONE/PKCS7Padding",new BouncyCastleProvider());
             Cipher cipher = Cipher.getInstance("ECIES",new BouncyCastleProvider());
+            //Cipher cipher = Cipher.getInstance("ECIESwithAESCBC",new BouncyCastleProvider());
             cipher.init(Cipher.DECRYPT_MODE, privateKey);
             byte[] cipherText = cipher.doFinal(raw);
             return cipherText;
         } catch (Exception e){
-            LogFile.logInfo("ECIESDecrypt: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
             return null;
         }
     }
@@ -274,7 +361,7 @@ public class ECUtils {
         try {
             return decodeHex(str.toCharArray());
         } catch (Exception e){
-            LogFile.logInfo("EcPublicKey2Bytes: "+e.getMessage());
+            OsnUtils.logInfo(e.toString());
             return null;
         }
     }
@@ -293,24 +380,24 @@ public class ECUtils {
 
         byte[] address = new byte[2+65+32];
         address[0] = (byte)0x10;
-        if(accType.equalsIgnoreCase("group"))
-            address[0] |= 0x80;
-        else if(accType.equalsIgnoreCase("service"))
-            address[0] |= 0x40;
         address[1] = 0;
+        if(accType.equalsIgnoreCase("group"))
+            address[1] = 1;
+        else if(accType.equalsIgnoreCase("service"))
+            address[1] = 2;
         System.arraycopy(pub1, 0, address, 2,65);
         System.arraycopy(pub2hash, 0, address, 67,32);
         return generateAddress(address);
     }
-    public static String[] createServiceOsnID(){
+    public static String[] createOsnID(String type){
         String mnemonicStr = createMnemonic();
         ChildNumber[] path1 = {new ChildNumber(23, true), new ChildNumber(1, false)};
         String subPrivateKeyStr1 = GenSubPrivateKey(mnemonicStr, path1);
         ChildNumber[] path2 = {new ChildNumber(24, true), new ChildNumber(1, false)};
         String subPrivateKeyStr2 = GenSubPrivateKey(mnemonicStr, path2);
-        String address = GenCompositeAddress(subPrivateKeyStr1, subPrivateKeyStr2, "service");
+        String address = GenCompositeAddress(subPrivateKeyStr1, subPrivateKeyStr2, type);
         String[] serviceOsnID = {address, subPrivateKeyStr1, subPrivateKeyStr2};
-        LogFile.logInfo("createServiceOsnID: " + serviceOsnID[0]);
+        OsnUtils.logInfo(serviceOsnID[0]);
         return serviceOsnID;
     }
 }
