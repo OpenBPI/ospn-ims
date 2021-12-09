@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Main-Class: com.ospn.OsnIMServer
+Class-Path: fastjson-1.2.76.jar mysql-connector-java-8.0.20.jar netty-bu
+ ffer-4.1.45.Final.jar netty-handler-4.1.45.Final.jar protobuf-java-3.6.
+ 1.jar netty-codec-http-4.1.45.Final.jar c3p0-0.9.5.5.jar mchange-common
+ s-java-0.2.19.jar netty-common-4.1.45.Final.jar netty-resolver-4.1.45.F
+ inal.jar netty-codec-4.1.45.Final.jar netty-transport-4.1.45.Final.jar
+
